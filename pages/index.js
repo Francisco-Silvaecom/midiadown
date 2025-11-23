@@ -1,114 +1,241 @@
-import { useState } from "react";
+// pages/index.js
+import React, { useState } from 'react';
+import Head from 'next/head';
 
 export default function Home() {
-  const [url, setUrl] = useState("");
+  const [urlInput, setUrlInput] = useState('');
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [mediaData, setMediaData] = useState(null);
+  const [error, setError] = useState(null);
 
   const handleDownload = async () => {
-    if (!url) return;
-    setLoading(true);
-    setMediaData(null);
-
-    try {
-      const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
-      const json = await res.json();
-      setMediaData(json);
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao processar o link. Tente novamente!");
+    if (!urlInput.trim()) {
+      setError('Por favor, insira uma URL válida.');
+      setResult(null);
+      return;
     }
 
-    setLoading(false);
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      // Chama a sua API que criamos no passo anterior
+      const response = await fetch(`/api/extract?url=${encodeURIComponent(urlInput)}`);
+      const data = await response.json();
+
+      if (data.ok && data.media) {
+        setResult(data.media);
+      } else {
+        // Se a API não encontrar mídia, devolvemos a mensagem
+        setError(data.message || 'Não foi possível encontrar a mídia neste link. Verifique se é um Pin de vídeo ou imagem.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Ocorreu um erro ao conectar com o servidor. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStream = () => {
+    if (result && result.url) {
+      // Usamos uma chamada simples que faz o navegador abrir o link
+      // Para fazer o download direto, usariamos o endpoint /api/stream que criamos no plano, mas aqui simplificamos.
+      window.open(result.url, '_blank');
+    }
   };
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>MídiaDown 🚀</h1>
-      <p style={styles.subtitle}>Baixe vídeos e fotos de Instagram, TikTok e mais!</p>
+      <Head>
+        <title>MidiaDown - Baixador de Vídeos e Imagens do Pinterest</title>
+        <meta name="description" content="Baixe seus vídeos e imagens favoritos do Pinterest de forma rápida e gratuita." />
+      </Head>
 
-      <div style={styles.form}>
-        <input
-          type="text"
-          placeholder="Cole o link aqui..."
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          style={styles.input}
-        />
-        <button onClick={handleDownload} style={styles.button}>
-          {loading ? "Aguarde..." : "Baixar"}
-        </button>
-      </div>
-
-      {mediaData?.download_url && (
-        <div style={styles.resultBox}>
-          <video
-            src={mediaData.download_url}
-            controls
-            style={{ width: "100%", borderRadius: 10 }}
-          />
-          <a
-            href={mediaData.download_url}
-            download
-            style={styles.downloadButton}
-          >
-            📥 Baixar Vídeo
-          </a>
+      <main style={styles.main}>
+        <h1 style={styles.title}>
+          MidiaDown
+        </h1>
+        <p style={styles.description}>
+          Baixe vídeos e imagens do Pinterest em alta qualidade.
+        </p>
+        
+        {/* ESPAÇO PARA ADX / ADSENSE - Bloco de Anúncio 1 */}
+        <div style={styles.adSpace}>
+          <p>[ESPAÇO ADSENSE: Top Banner 728x90]</p>
+          {/* Adicione o código AdSense aqui quando for aprovado */}
         </div>
-      )}
+        {/* FIM DO ESPAÇO PARA ADSENSE */}
+
+        <div style={styles.inputArea}>
+          <input
+            type="text"
+            placeholder="Cole o link do Pin do Pinterest aqui..."
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            style={styles.input}
+            disabled={loading}
+          />
+          <button
+            onClick={handleDownload}
+            style={styles.button}
+            disabled={loading}
+          >
+            {loading ? 'Buscando...' : 'Baixar Mídia'}
+          </button>
+        </div>
+
+        {error && <p style={styles.error}>{error}</p>}
+
+        {result && (
+          <div style={styles.resultArea}>
+            <h2 style={styles.resultTitle}>Mídia Encontrada ({result.type.toUpperCase()})</h2>
+            
+            <p>Clique para iniciar o download.</p>
+            
+            <button 
+              onClick={handleStream} 
+              style={styles.downloadButton}
+            >
+              Download {result.type.toUpperCase()}
+            </button>
+            
+            {/* Opcional: Mostrar uma prévia. Em produção, você mostraria uma thumbnail. */}
+            {result.type === 'image' && (
+              <img src={result.url} alt="Preview" style={styles.previewImage} />
+            )}
+            
+            {/* ESPAÇO PARA ADX / ADSENSE - Bloco de Anúncio 2 */}
+            <div style={styles.adSpaceSmall}>
+               <p>[ESPAÇO ADSENSE: Banner 300x250 após o resultado]</p>
+            </div>
+            {/* FIM DO ESPAÇO PARA ADSENSE */}
+          </div>
+        )}
+      </main>
+
+      <footer style={styles.footer}>
+        <p>&copy; {new Date().getFullYear()} MidiaDown. Todos os direitos reservados.</p>
+        <p>Esta ferramenta não é afiliada ao Pinterest.</p>
+      </footer>
     </div>
   );
 }
 
+// Estilos básicos para o MVP (você deve usar um arquivo CSS ou módulos para algo melhor)
 const styles = {
   container: {
-    maxWidth: 600,
-    margin: "60px auto",
-    padding: 20,
-    fontFamily: "Arial",
-    textAlign: "center",
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: '20px',
+  },
+  main: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: '800px',
+    padding: '20px',
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
   },
   title: {
-    fontSize: 38,
-    fontWeight: "bold",
+    fontSize: '2.5rem',
+    color: '#E60023', // Cor do Pinterest
+    marginBottom: '10px',
   },
-  subtitle: {
-    opacity: 0.7,
-    marginBottom: 25,
+  description: {
+    fontSize: '1.2rem',
+    color: '#6c757d',
+    marginBottom: '20px',
+    textAlign: 'center',
   },
-  form: {
-    display: "flex",
-    gap: 10,
-    marginBottom: 25,
+  adSpace: {
+    width: '100%',
+    height: '90px',
+    backgroundColor: '#eee',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: '30px',
+    border: '1px dashed #ccc',
+  },
+  adSpaceSmall: {
+    width: '300px',
+    height: '250px',
+    backgroundColor: '#eee',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: '20px',
+    border: '1px dashed #ccc',
+  },
+  inputArea: {
+    display: 'flex',
+    width: '100%',
+    marginBottom: '20px',
+    gap: '10px',
   },
   input: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 6,
-    border: "1px solid #ccc",
+    flexGrow: 1,
+    padding: '12px',
+    fontSize: '1rem',
+    borderRadius: '4px',
+    border: '1px solid #ced4da',
   },
   button: {
-    background: "#0070f3",
-    color: "#fff",
-    padding: "12px 18px",
-    borderRadius: 6,
-    border: "none",
-    cursor: "pointer",
+    padding: '12px 20px',
+    fontSize: '1rem',
+    backgroundColor: '#E60023',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'background-color 0.3s ease',
   },
-  resultBox: {
-    background: "#f2f2f2",
-    padding: 20,
-    marginTop: 20,
-    borderRadius: 12,
+  error: {
+    color: 'red',
+    marginTop: '10px',
+  },
+  resultArea: {
+    marginTop: '30px',
+    padding: '20px',
+    border: '1px solid #E60023',
+    borderRadius: '6px',
+    width: '100%',
+    textAlign: 'center',
+  },
+  resultTitle: {
+    color: '#343a40',
+    marginBottom: '10px',
   },
   downloadButton: {
-    display: "block",
-    background: "#12b886",
-    textDecoration: "none",
-    color: "#fff",
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 6,
-    fontWeight: "bold",
+    padding: '10px 15px',
+    fontSize: '1.1rem',
+    backgroundColor: '#007bff',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    marginTop: '10px',
   },
+  previewImage: {
+      maxWidth: '100%',
+      height: 'auto',
+      marginTop: '15px',
+      border: '1px solid #ddd',
+  },
+  footer: {
+    marginTop: '40px',
+    padding: '10px',
+    textAlign: 'center',
+    fontSize: '0.8rem',
+    color: '#6c757d',
+  }
 };

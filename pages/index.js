@@ -20,7 +20,6 @@ export default function Home() {
     setResult(null);
 
     try {
-      // Chamada à API de extração local
       const response = await fetch(`/api/extract?url=${encodeURIComponent(urlInput)}`);
       const data = await response.json();
 
@@ -37,12 +36,18 @@ export default function Home() {
     }
   };
 
+  // FUNÇÃO ATUALIZADA para usar o endpoint /api/stream (download forçado)
   const handleStream = () => {
     if (result && result.url) {
-      // Abre o link direto no navegador (comportamento de download)
-      window.open(result.url, '_blank');
+      const urlParts = result.url.split('/');
+      let filename = urlParts[urlParts.length - 1] || (result.type === 'video' ? 'pin_video.mp4' : 'pin_image.jpg');
+      
+      const streamEndpoint = `/api/stream?media=${encodeURIComponent(result.url)}&filename=${encodeURIComponent(filename)}`;
+      
+      window.open(streamEndpoint, '_blank');
     }
   };
+
 
   return (
     <div style={styles.container}>
@@ -88,7 +93,7 @@ export default function Home() {
           <div style={styles.resultArea}>
             <h2 style={styles.resultTitle}>Mídia Encontrada ({result.type.toUpperCase()})</h2>
             
-            <p>Clique no botão para iniciar o download.</p>
+            <p>Clique no botão para iniciar o download forçado.</p>
             
             <button 
               onClick={handleStream} 

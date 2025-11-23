@@ -1,5 +1,3 @@
-// pages/api/instagram.js
-
 export default async function handler(req, res) {
   const { url } = req.query;
 
@@ -8,20 +6,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiURL = `https://instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com/?url=${encodeURIComponent(url)}`;
-
-    const response = await fetch(apiURL, {
+    const response = await fetch("https://instasupersave.com/api/convert", {
+      method: "POST",
       headers: {
-        "x-rapidapi-key": process.env.RAPIDAPI_KEY,
-        "x-rapidapi-host": "instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com"
-      }
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url }),
     });
 
-    const data = await response.json();
-    return res.status(200).json(data);
+    const result = await response.json();
+
+    if (result && result.result && result.result[0]?.url) {
+      return res.status(200).json({
+        media: result.result[0].url
+      });
+    }
+
+    return res.status(400).json({ error: "Vídeo não encontrado. Verifique a URL!" });
 
   } catch (error) {
-    console.error(error);
+    console.error(error)
     return res.status(500).json({ error: "Erro ao baixar o vídeo" });
   }
 }

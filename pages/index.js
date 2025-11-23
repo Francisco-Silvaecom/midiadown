@@ -2,120 +2,113 @@ import { useState } from "react";
 
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [mediaData, setMediaData] = useState(null);
 
   const handleDownload = async () => {
     if (!url) return;
-
     setLoading(true);
-    setError("");
-    setResult(null);
+    setMediaData(null);
 
     try {
-      const response = await fetch(`/api/instagram?url=${encodeURIComponent(url)}`);
-      const data = await response.json();
-
-      if (data.error) {
-        setError("URL inválida ou não suportada.");
-      } else {
-        setResult(data);
-      }
+      const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
+      const json = await res.json();
+      setMediaData(json);
     } catch (err) {
       console.error(err);
-      setError("Erro ao conectar ao servidor.");
+      alert("Erro ao processar o link. Tente novamente!");
     }
 
     setLoading(false);
   };
 
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      height: "100vh",
-      textAlign: "center",
-      flexDirection: "column",
-      backgroundColor: "#111",
-      color: "#fff",
-      fontFamily: "Arial, sans-serif",
-      padding: "20px",
-    }}>
-      
-      <h1 style={{ fontSize: "32px", marginBottom: "20px" }}>
-        MidiaDown 🚀
-      </h1>
+    <div style={styles.container}>
+      <h1 style={styles.title}>MídiaDown 🚀</h1>
+      <p style={styles.subtitle}>Baixe vídeos e fotos de Instagram, TikTok e mais!</p>
 
-      <p style={{ marginBottom: "20px", opacity: 0.85 }}>
-        Baixe Reels do Instagram em poucos segundos
-      </p>
+      <div style={styles.form}>
+        <input
+          type="text"
+          placeholder="Cole o link aqui..."
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          style={styles.input}
+        />
+        <button onClick={handleDownload} style={styles.button}>
+          {loading ? "Aguarde..." : "Baixar"}
+        </button>
+      </div>
 
-      <input
-        type="text"
-        placeholder="Cole o link do Reels aqui..."
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        style={{
-          width: "95%",
-          maxWidth: "450px",
-          padding: "12px 15px",
-          borderRadius: "8px",
-          border: "none",
-          outline: "none",
-          marginBottom: "15px",
-        }}
-      />
-
-      <button
-        onClick={handleDownload}
-        disabled={loading}
-        style={{
-          backgroundColor: loading ? "#555" : "#00b894",
-          padding: "12px 18px",
-          borderRadius: "8px",
-          color: "#fff",
-          border: "none",
-          cursor: "pointer",
-          width: "95%",
-          maxWidth: "450px",
-        }}
-      >
-        {loading ? "Carregando..." : "Baixar Vídeo 📥"}
-      </button>
-
-      {error && <p style={{ color: "red", marginTop: "15px" }}>{error}</p>}
-
-      {result && result.media && (
-        <div style={{ marginTop: "25px" }}>
+      {mediaData?.download_url && (
+        <div style={styles.resultBox}>
           <video
-            src={result.media}
+            src={mediaData.download_url}
             controls
-            width="90%"
-            style={{ maxWidth: "450px", borderRadius: "10px" }}
+            style={{ width: "100%", borderRadius: 10 }}
           />
-          <br /><br />
-
           <a
-            href={result.media}
+            href={mediaData.download_url}
             download
-            style={{
-              backgroundColor: "#0984e3",
-              padding: "12px 18px",
-              borderRadius: "8px",
-              color: "white",
-              textDecoration: "none",
-            }}
+            style={styles.downloadButton}
           >
-            📥 Download Vídeo
+            📥 Baixar Vídeo
           </a>
         </div>
       )}
-
-      <footer style={{ marginTop: "40px", opacity: 0.6 }}>
-        © {new Date().getFullYear()} MidiaDown — Todos os direitos reservados
-      </footer>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    maxWidth: 600,
+    margin: "60px auto",
+    padding: 20,
+    fontFamily: "Arial",
+    textAlign: "center",
+  },
+  title: {
+    fontSize: 38,
+    fontWeight: "bold",
+  },
+  subtitle: {
+    opacity: 0.7,
+    marginBottom: 25,
+  },
+  form: {
+    display: "flex",
+    gap: 10,
+    marginBottom: 25,
+  },
+  input: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  },
+  button: {
+    background: "#0070f3",
+    color: "#fff",
+    padding: "12px 18px",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+  },
+  resultBox: {
+    background: "#f2f2f2",
+    padding: 20,
+    marginTop: 20,
+    borderRadius: 12,
+  },
+  downloadButton: {
+    display: "block",
+    background: "#12b886",
+    textDecoration: "none",
+    color: "#fff",
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 6,
+    fontWeight: "bold",
+  },
+};

@@ -1,8 +1,13 @@
 // pages/api/extract.js
-// API Route para extração de links de mídia de uma URL (Versão Final: Meta Tags + JSON)
+// API Route para extração de links de mídia via RapidAPI (Versão Final e Funcional)
 
 import got from 'got';
-import cheerio from 'cheerio';
+
+// 🚨 CREDENCIAIS CONFIGURADAS 🚨
+const RAPIDAPI_HOST = 'pinterest-video-and-image-downloader.p.rapidapi.com'; 
+const RAPIDAPI_KEY = 'f33219dae3msheaf9a18e4309ef0p1551a9jsn1a91ec0c62d2'; 
+const API_ENDPOINT = 'https://pinterest-video-and-image-downloader.p.rapidapi.com/get-pin-media'; 
+
 
 // Função utilitária para validar e normalizar a URL
 function normalizeUrl(u) {
@@ -11,50 +16,6 @@ function normalizeUrl(u) {
   } catch (e) {
     return null;
   }
-}
-
-// Lógica de extração de mídia: Prioriza meta tags e JSON estruturado
-async function extractMediaFromHtml(html) {
-  const $ = cheerio.load(html);
-
-  // --- ESTRATÉGIA 1: Meta Tags (Mais universal para vídeos e imagens) ---
-  
-  // Tenta buscar o link do vídeo em Open Graph (og:video)
-  const ogVideo =
-    $('meta[property="og:video:secure_url"]').attr('content') ||
-    $('meta[property="og:video"]').attr('content') ||
-    $('meta[property="og:video:url"]').attr('content') ||
-    $('meta[name="og:video"]').attr('content'); 
-  
-  // Confirma se o link é MP4 ou tem chance de ser vídeo
-  if (ogVideo && ogVideo.includes('.mp4')) {
-    return { type: 'video', url: ogVideo.replace(/\\u002f/g, '/'), source: 'og:video' };
-  }
-
-  // Tenta buscar o link da imagem (og:image)
-  const ogImage =
-    $('meta[property="og:image"]').attr('content') ||
-    $('meta[name="og:image"]').attr('content');
-  
-  if (ogImage) {
-    return { type: 'image', url: ogImage.replace(/\\u002f/g, '/'), source: 'og:image' };
-  }
-
-  // --- ESTRATÉGIA 2: JSON Interno (Último recurso se as meta tags falharem) ---
-  
-  // Usa REGEX para encontrar a URL de vídeo mais proeminente no HTML
-  const regexVideo = /(https:\/\/[^"]+\/videos\/[^"]+\/(480p|720p|orig)\/[^"]+\.mp4)/i;
-  
-  let videoMatch = html.match(regexVideo);
-  if (videoMatch && videoMatch[1]) {
-      return { 
-          type: 'video', 
-          url: videoMatch[1].replace(/\\u002f/g, '/'), 
-          source: 'html_regex_video_v4'
-      };
-  }
-
-  return null;
 }
 
 // O handler principal da API
@@ -70,37 +31,67 @@ export default async function handler(req, res) {
   }
 
   try {
-    const resp = await got(targetUrl, {
-      headers: {
-        // ESSENCIAL: Usar um User-Agent de celular pode forçar o Pinterest a enviar links mais diretos
-        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-        'accept': 'text/html,application/xhtml+xml',
-      },
-      timeout: { request: 15000 },
-      followRedirect: true,
+    // 1. CHAMA A API DO PINTEREST
+    const response = await got(API_ENDPOINT, {
+        searchParams: { url: targetUrl }, // Envia o link do Pin para a API
+        headers: {
+            'x-rapidapi-host': RAPIDAPI_HOST,
+            'x-rapidapi-key': RAPIDAPI_KEY,
+        },
+        responseType: 'json',
+        timeout: { request: 20000 },
     });
 
-    const info = await extractMediaFromHtml(resp.body);
+    const apiData = response.body;
 
-    if (info) {
-      return res.status(200).json({
-        ok: true,
-        sourceUrl: targetUrl,
-        media: info,
-        message: 'Mídia extraída com sucesso.'
-      });
+    // 2. ANALISA A RESPOSTA DA API
+    // Estrutura de análise robusta para extrair links de vídeo (prioridade) ou imagem
+    let mediaUrl = null;
+    let mediaType = null;
+    
+    // Tenta encontrar o vídeo (comumente em 'video' ou 'download_video')
+    const videoResult = apiData.video || apiData.download_video; 
+    
+    if (videoResult && typeof videoResult === 'string' && videoResult.includes('http')) {
+        mediaUrl = videoResult;
+        mediaType = 'video';
     } else {
-      return res.status(404).json({ 
-        ok: false,
-        sourceUrl: targetUrl,
-        message: 'Nenhuma mídia de vídeo ou imagem encontrada. Verifique se o Pin é de vídeo/imagem.'
-      });
+        // Tenta encontrar o link da imagem se o vídeo não for encontrado
+        const imageResult = apiData.image || apiData.download_image || apiData.image_url;
+        if (imageResult && typeof imageResult === 'string' && imageResult.includes('http')) {
+            mediaUrl = imageResult;
+            mediaType = 'image';
+        }
+    }
+
+
+    if (mediaUrl) {
+        return res.status(200).json({
+            ok: true,
+            sourceUrl: targetUrl,
+            media: { type: mediaType, url: mediaUrl.replace(/\\u002f/g, '/'), source: 'external_api' },
+            message: 'Mídia extraída com sucesso via API externa.'
+        });
+    } else {
+        return res.status(404).json({ 
+            ok: false,
+            sourceUrl: targetUrl,
+            message: 'A API externa não retornou um link de vídeo ou imagem válido para este Pin. Verifique se o Pin é público.'
+        });
     }
   } catch (err) {
     console.error('API Error:', err.message);
+    // Erros 401/403: Geralmente significam chave inválida ou falta de créditos.
+    if (err.response && (err.response.statusCode === 401 || err.response.statusCode === 403)) {
+         return res.status(err.response.statusCode).json({
+            ok: false,
+            message: 'Erro de Autenticação na API Externa. Verifique se a chave está correta e se você tem créditos no plano Basic (Free) do RapidAPI.',
+            details: err.message
+        });
+    }
     return res.status(500).json({ 
       ok: false, 
-      message: 'Erro interno ao tentar processar a URL. Verifique se o link é válido.', 
+      message: 'Erro ao tentar processar a URL na API externa.', 
       details: err.message 
     });
   }

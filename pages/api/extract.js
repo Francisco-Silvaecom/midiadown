@@ -1,5 +1,5 @@
 // pages/api/extract.js
-// API Route para extração de links de mídia de uma URL (Otimizado para Pinterest com REGEX V3)
+// API Route para extração de links de mídia de uma URL (Versão Final: Meta Tags + JSON)
 
 import got from 'got';
 import cheerio from 'cheerio';
@@ -13,54 +13,46 @@ function normalizeUrl(u) {
   }
 }
 
-// Lógica de extração de mídia via Busca Ampla no HTML (mais agressiva)
+// Lógica de extração de mídia: Prioriza meta tags e JSON estruturado
 async function extractMediaFromHtml(html) {
-  // 1) Estratégia Principal: Usar REGEX amplo para encontrar URLs de vídeo/imagem diretamente
-  
-  // Regex para links diretos de MP4 de alta resolução (480p, 720p, orig, etc.)
-  // Ex: https://v.pinimg.com/videos/mc/720p/52/63/87/5263870f7d52634d2b2707f59d4c7952.mp4
-  const regexVideo = /(https:\/\/[^"]+\/videos\/[^"]+\/(480p|720p|orig)\/[^"]+\.mp4)/i;
-  
-  // Regex para links diretos de JPG/PNG de alta qualidade
-  // Ex: https://i.pinimg.com/originals/a4/d3/18/a4d318e8d89e02316e6423985a73e558.jpg
-  const regexImage = /(https:\/\/[^"]+\/originals\/[^"]+\.(jpg|png))/i;
-
-  // Busca o vídeo primeiro
-  let videoMatch = html.match(regexVideo);
-  if (videoMatch && videoMatch[1]) {
-      // Retorna o link MP4 encontrado e limpa caracteres de escape
-      return { 
-          type: 'video', 
-          url: videoMatch[1].replace(/\\u002f/g, '/'), 
-          source: 'html_regex_video_v3'
-      };
-  }
-
-  // Se não encontrar vídeo, busca a imagem
-  let imageMatch = html.match(regexImage);
-  if (imageMatch && imageMatch[1]) {
-      // Retorna o link de Imagem encontrado
-      return { 
-          type: 'image', 
-          url: imageMatch[1].replace(/\\u002f/g, '/'),
-          source: 'html_regex_image_v3'
-      };
-  }
-
-  // 2) Estratégia Fallback: Meta Tags (Backup contra grandes mudanças na estrutura)
   const $ = cheerio.load(html);
 
+  // --- ESTRATÉGIA 1: Meta Tags (Mais universal para vídeos e imagens) ---
+  
+  // Tenta buscar o link do vídeo em Open Graph (og:video)
   const ogVideo =
     $('meta[property="og:video:secure_url"]').attr('content') ||
-    $('meta[property="og:video"]').attr('content');
+    $('meta[property="og:video"]').attr('content') ||
+    $('meta[property="og:video:url"]').attr('content') ||
+    $('meta[name="og:video"]').attr('content'); 
+  
+  // Confirma se o link é MP4 ou tem chance de ser vídeo
+  if (ogVideo && ogVideo.includes('.mp4')) {
+    return { type: 'video', url: ogVideo.replace(/\\u002f/g, '/'), source: 'og:video' };
+  }
 
-  if (ogVideo) return { type: 'video', url: ogVideo, source: 'og:video' };
-
+  // Tenta buscar o link da imagem (og:image)
   const ogImage =
     $('meta[property="og:image"]').attr('content') ||
     $('meta[name="og:image"]').attr('content');
   
-  if (ogImage) return { type: 'image', url: ogImage, source: 'og:image' };
+  if (ogImage) {
+    return { type: 'image', url: ogImage.replace(/\\u002f/g, '/'), source: 'og:image' };
+  }
+
+  // --- ESTRATÉGIA 2: JSON Interno (Último recurso se as meta tags falharem) ---
+  
+  // Usa REGEX para encontrar a URL de vídeo mais proeminente no HTML
+  const regexVideo = /(https:\/\/[^"]+\/videos\/[^"]+\/(480p|720p|orig)\/[^"]+\.mp4)/i;
+  
+  let videoMatch = html.match(regexVideo);
+  if (videoMatch && videoMatch[1]) {
+      return { 
+          type: 'video', 
+          url: videoMatch[1].replace(/\\u002f/g, '/'), 
+          source: 'html_regex_video_v4'
+      };
+  }
 
   return null;
 }
@@ -80,7 +72,8 @@ export default async function handler(req, res) {
   try {
     const resp = await got(targetUrl, {
       headers: {
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115 Safari/537.36',
+        // ESSENCIAL: Usar um User-Agent de celular pode forçar o Pinterest a enviar links mais diretos
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
         'accept': 'text/html,application/xhtml+xml',
       },
       timeout: { request: 15000 },

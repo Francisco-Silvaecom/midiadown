@@ -1,5 +1,5 @@
 // pages/api/extract.js
-// API Route para extração de links de mídia de uma URL (Otimizado para Pinterest com REGEX)
+// API Route para extração de links de mídia de uma URL (Otimizado para Pinterest com REGEX V3)
 
 import got from 'got';
 import cheerio from 'cheerio';
@@ -13,44 +13,43 @@ function normalizeUrl(u) {
   }
 }
 
-// Lógica de extração de mídia via JSON interno do Pinterest (REGEX)
+// Lógica de extração de mídia via Busca Ampla no HTML (mais agressiva)
 async function extractMediaFromHtml(html) {
-  const $ = cheerio.load(html);
-
-  // 1) Estratégia Principal: Usar REGEX para encontrar a URL de vídeo mais proeminente no JSON
-  // Procura por URLs de vídeo com alta resolução ('480p', '720p', 'orig') dentro de blocos JSON/scripts
-  const regexVideo = /"video_list":\s*{[^}]+"(\d+p|orig)":\s*{[^}]+"url":\s*"(https:\/\/[^"]+\.mp4)"/i;
-  // Procura por URLs de imagem de qualidade média/alta
-  const regexImage = /"image_medium_url":\s*"(https:\/\/[^"]+\.jpg)"|url\s*:\s*"(https:\/\/[^"]+\.png)"/i;
-
-  // Busca o conteúdo de todos os scripts, onde o Pinterest guarda os dados
-  const scripts = $('script').toArray().map(s => $(s).html()).filter(Boolean);
+  // 1) Estratégia Principal: Usar REGEX amplo para encontrar URLs de vídeo/imagem diretamente
   
-  for (const scriptContent of scripts) {
-    // Tenta encontrar o link do vídeo (prioridade)
-    let videoMatch = scriptContent.match(regexVideo);
-    if (videoMatch && videoMatch[2]) {
-        // Retorna o link MP4 encontrado e limpa caracteres de escape (\u002f)
-        return { 
-            type: 'video', 
-            url: videoMatch[2].replace(/\\u002f/g, '/'), 
-            source: 'json_regex_video'
-        };
-    }
-    
-    // Tenta encontrar o link da imagem (Fallback)
-    let imageMatch = scriptContent.match(regexImage);
-    if (imageMatch && (imageMatch[1] || imageMatch[2])) {
-        const imageUrl = imageMatch[1] || imageMatch[2];
-        return { 
-            type: 'image', 
-            url: imageUrl.replace(/\\u002f/g, '/'),
-            source: 'json_regex_image'
-        };
-    }
+  // Regex para links diretos de MP4 de alta resolução (480p, 720p, orig, etc.)
+  // Ex: https://v.pinimg.com/videos/mc/720p/52/63/87/5263870f7d52634d2b2707f59d4c7952.mp4
+  const regexVideo = /(https:\/\/[^"]+\/videos\/[^"]+\/(480p|720p|orig)\/[^"]+\.mp4)/i;
+  
+  // Regex para links diretos de JPG/PNG de alta qualidade
+  // Ex: https://i.pinimg.com/originals/a4/d3/18/a4d318e8d89e02316e6423985a73e558.jpg
+  const regexImage = /(https:\/\/[^"]+\/originals\/[^"]+\.(jpg|png))/i;
+
+  // Busca o vídeo primeiro
+  let videoMatch = html.match(regexVideo);
+  if (videoMatch && videoMatch[1]) {
+      // Retorna o link MP4 encontrado e limpa caracteres de escape
+      return { 
+          type: 'video', 
+          url: videoMatch[1].replace(/\\u002f/g, '/'), 
+          source: 'html_regex_video_v3'
+      };
+  }
+
+  // Se não encontrar vídeo, busca a imagem
+  let imageMatch = html.match(regexImage);
+  if (imageMatch && imageMatch[1]) {
+      // Retorna o link de Imagem encontrado
+      return { 
+          type: 'image', 
+          url: imageMatch[1].replace(/\\u002f/g, '/'),
+          source: 'html_regex_image_v3'
+      };
   }
 
   // 2) Estratégia Fallback: Meta Tags (Backup contra grandes mudanças na estrutura)
+  const $ = cheerio.load(html);
+
   const ogVideo =
     $('meta[property="og:video:secure_url"]').attr('content') ||
     $('meta[property="og:video"]').attr('content');
@@ -108,7 +107,7 @@ export default async function handler(req, res) {
     console.error('API Error:', err.message);
     return res.status(500).json({ 
       ok: false, 
-      message: 'Erro interno ao tentar processar a URL.', 
+      message: 'Erro interno ao tentar processar a URL. Verifique se o link é válido.', 
       details: err.message 
     });
   }

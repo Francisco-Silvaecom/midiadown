@@ -1,5 +1,5 @@
 // pages/api/extract.js
-// API Route para extração de links de mídia de uma URL (Otimizado para Pinterest)
+// API Route para extração de links de mídia de uma URL (Otimizado para Pinterest com REGEX)
 
 import got from 'got';
 import cheerio from 'cheerio';
@@ -13,46 +13,47 @@ function normalizeUrl(u) {
   }
 }
 
-// Lógica de extração de mídia via JSON interno do Pinterest
+// Lógica de extração de mídia via JSON interno do Pinterest (REGEX)
 async function extractMediaFromHtml(html) {
   const $ = cheerio.load(html);
 
-  // 1) Estratégia Pinterest: Buscar dados JSON embutidos (Mais confiável para vídeos)
-  // O JSON do Pinterest geralmente está em um script com id="initial-state" ou similar
-  const scripts = $('script').toArray().map(s => $(s).html()).filter(s => s.includes('resourceResponses'));
+  // 1) Estratégia Principal: Usar REGEX para encontrar a URL de vídeo mais proeminente no JSON
+  // Procura por URLs de vídeo com alta resolução ('480p', '720p', 'orig') dentro de blocos JSON/scripts
+  const regexVideo = /"video_list":\s*{[^}]+"(\d+p|orig)":\s*{[^}]+"url":\s*"(https:\/\/[^"]+\.mp4)"/i;
+  // Procura por URLs de imagem de qualidade média/alta
+  const regexImage = /"image_medium_url":\s*"(https:\/\/[^"]+\.jpg)"|url\s*:\s*"(https:\/\/[^"]+\.png)"/i;
+
+  // Busca o conteúdo de todos os scripts, onde o Pinterest guarda os dados
+  const scripts = $('script').toArray().map(s => $(s).html()).filter(Boolean);
   
-  if (scripts.length > 0) {
-    try {
-        const jsonText = scripts[0];
-        const start = jsonText.indexOf('{');
-        const end = jsonText.lastIndexOf('}');
-        const cleanedJson = jsonText.substring(start, end + 1);
-        
-        const data = JSON.parse(cleanedJson);
-
-        // Tentativa de encontrar o link do vídeo dentro da estrutura de dados
-        const videoData = Object.values(data.resourceResponses || {})
-            .flatMap(res => res.data?.videos?.videoList || [])
-            .find(video => video.url && video.width > 0);
-
-        if (videoData && videoData.url) {
-            return { 
-                type: 'video', 
-                url: videoData.url, 
-                source: 'json_data'
-            };
-        }
-    } catch (e) {
-        console.warn("Falha na extração JSON do Pinterest:", e.message);
+  for (const scriptContent of scripts) {
+    // Tenta encontrar o link do vídeo (prioridade)
+    let videoMatch = scriptContent.match(regexVideo);
+    if (videoMatch && videoMatch[2]) {
+        // Retorna o link MP4 encontrado e limpa caracteres de escape (\u002f)
+        return { 
+            type: 'video', 
+            url: videoMatch[2].replace(/\\u002f/g, '/'), 
+            source: 'json_regex_video'
+        };
+    }
+    
+    // Tenta encontrar o link da imagem (Fallback)
+    let imageMatch = scriptContent.match(regexImage);
+    if (imageMatch && (imageMatch[1] || imageMatch[2])) {
+        const imageUrl = imageMatch[1] || imageMatch[2];
+        return { 
+            type: 'image', 
+            url: imageUrl.replace(/\\u002f/g, '/'),
+            source: 'json_regex_image'
+        };
     }
   }
 
-  // 2) Estratégia Fallback: Meta Tags (Funciona bem para imagens)
+  // 2) Estratégia Fallback: Meta Tags (Backup contra grandes mudanças na estrutura)
   const ogVideo =
     $('meta[property="og:video:secure_url"]').attr('content') ||
-    $('meta[property="og:video"]').attr('content') ||
-    $('meta[name="og:video"]').attr('content') ||
-    $('meta[property="og:video:url"]').attr('content');
+    $('meta[property="og:video"]').attr('content');
 
   if (ogVideo) return { type: 'video', url: ogVideo, source: 'og:video' };
 
@@ -61,18 +62,6 @@ async function extractMediaFromHtml(html) {
     $('meta[name="og:image"]').attr('content');
   
   if (ogImage) return { type: 'image', url: ogImage, source: 'og:image' };
-
-  // 3) Fallback Genérico: Busca simples em scripts (Última chance)
-  const allScripts = $('script').toArray().map(s => $(s).html()).filter(Boolean);
-  for (const s of allScripts) {
-    const match = s.match(/(https?:\/\/[^\s"'<>\\\)\(]+\.(mp4|m3u8|jpg|jpeg|png|gif))/i);
-    if (match) {
-      if (match[2] === 'mp4') {
-         return { type: 'video', url: match[1], source: 'script_match_mp4' };
-      }
-      return { type: match[2] === 'mp4' ? 'video' : 'image', url: match[1], source: 'script_match' };
-    }
-  }
 
   return null;
 }
@@ -90,7 +79,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Cabeçalhos realistas são vitais para evitar bloqueio
     const resp = await got(targetUrl, {
       headers: {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115 Safari/537.36',

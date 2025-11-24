@@ -1,11 +1,7 @@
 import Link from 'next/link';
-import styles from '../styles/Home.module.css'; // ✅ AGORA O CAMINHO ESTÁ CORRETO
+// ESTE É O CAMINHO CORRETO PARA ENCONTRAR O ARQUIVO CSS
+import styles from '../styles/Home.module.css'; 
 
-const Navbar = () => {
-    // ... (restante do código da Navbar é o mesmo)
-};
-
-export default Navbar;
 const Navbar = () => {
     return (
         <nav className={styles.navbar}>

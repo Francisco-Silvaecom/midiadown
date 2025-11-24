@@ -1,5 +1,5 @@
 import Link from 'next/link';
-// Caminho de importação do CSS (agora corrigido para '../styles')
+// Este é o caminho correto para o CSS:
 import styles from '../styles/Home.module.css'; 
 
 const Navbar = () => {
@@ -31,5 +31,5 @@ const Navbar = () => {
     );
 };
 
-// Exportação única
+// Apenas uma exportação
 export default Navbar;
